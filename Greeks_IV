@@ -1,0 +1,69 @@
+
+import py_vollib.black_scholes_merton.implied_volatility as BSM
+import quantsbin.derivativepricing as qbdp
+import mibian
+import datetime
+
+
+
+inputs = {'target_value': 10.21, #Current Option Price
+        'flag': 'C', # 'P' or 'C'
+        'S': 309, # Spot Price underlying
+        'K':  310, #  Strike Price
+        't1': '20200228', # Expiration date 'YYYYMMDD'
+        't0': '20200202', # Calculation date 'YYYYMMDD'
+        'r':  0.0155, # Risk free rate 0.01 = 1%
+        'div': 0.01, # Annual div yield 0.01 = 1%
+        'IV_only': False # Set to true to skip calculation of greeks
+          }
+
+print(inputs)
+
+
+
+def greeks(target_value = inputs['target_value'], flag= inputs['flag'], S= inputs['S'], K= inputs['K'], t1= inputs['t1'], t0= inputs['t0'], r= inputs['r'], div= inputs['div'], IV_only= inputs['IV_only']):
+    if flag == 'C':
+        call_put = 'Call'
+    else:
+        call_put = "Put"
+
+    d1 = datetime.datetime.strptime(t1, '%Y%m%d')
+    d0 = datetime.datetime.strptime(t0, '%Y%m%d')
+
+    delta = d1 - d0
+    delta_annual = delta.days / 365
+
+    print('DTE: ',delta.days )
+
+    sigma = BSM.implied_volatility(target_value, S, K, delta_annual, r, div, flag.lower())
+
+    if IV_only == False:
+        risk_parameters = {'delta_spot': 0.02, 'delta_vol': 0.02, 'delta_rf_rate': 0.02,
+                           'delta_time': 1}
+
+        equity_o = qbdp.EqOption(option_type=call_put, strike=K, expiry_date=t1, expiry_type='American')
+        engine = equity_o.engine(model="Binomial", spot0=S, pricing_date=t0,
+                                 rf_rate=r, yield_div=div, volatility=sigma)
+
+        greeks = engine.risk_parameters(**risk_parameters)
+        greeks['IV'] = sigma
+        return greeks
+    else:
+        return sigma
+
+def price(flag,S,K,r,div,dte,IV):
+
+    c = mibian.Me([S, K, r * 100, div * 100, dte], volatility=IV * 100)
+
+    if flag == 'C':
+        return c.callPrice
+    else:
+        return c.putPrice
+
+
+
+print(greeks())
+# Output = {'delta': 0.5002459888769449, 'gamma': 0.014635060949623609, 'theta': -0.2079936973073533, 'vega': 32.816538264949315, 'rho': 10.360650576324652, 'IV': 0.32336373582195665}
+
+print(price('C',309,310,0.0155,0.01,26,0.323))
+# Output = 10.27
